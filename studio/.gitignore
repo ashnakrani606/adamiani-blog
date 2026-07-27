@@ -1,0 +1,7 @@
+# Sanity Studio (standalone)
+node_modules
+dist
+.sanity
+.env
+.env.*
+*.log

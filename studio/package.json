@@ -1,0 +1,23 @@
+{
+  "name": "adamiani-blog-studio",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Standalone Sanity Studio for the Adamiani multilingual blog",
+  "scripts": {
+    "dev": "node --env-file=.env --env-file=../.env ./node_modules/sanity/bin/sanity dev",
+    "start": "node --env-file=.env --env-file=../.env ./node_modules/sanity/bin/sanity dev",
+    "build": "node --env-file=.env --env-file=../.env ./node_modules/sanity/bin/sanity build",
+    "deploy": "node --env-file=.env --env-file=../.env ./node_modules/sanity/bin/sanity deploy",
+    "login": "node --env-file=.env --env-file=../.env ./node_modules/sanity/bin/sanity login --provider google"
+  },
+  "dependencies": {
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "sanity": "^6.6.0",
+    "styled-components": "^6.1.19"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "typescript": "^5"
+  }
+}
