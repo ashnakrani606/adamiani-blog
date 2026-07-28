@@ -30,3 +30,28 @@ export async function sanityFetch<T>(
 
   return sanityClient.fetch<T>(query, params);
 }
+
+/**
+ * Server-side fetch that bypasses the CDN to get the freshest data.
+ * Use this for sitemap generation and revalidation-critical endpoints.
+ */
+export async function serverSanityFetch<T>(
+  query: string,
+  params: QueryParams = {}
+): Promise<T> {
+  if (!isSanityConfigured) {
+    console.warn(
+      "[sanity] NEXT_PUBLIC_SANITY_PROJECT_ID is not set. Returning empty blog data."
+    );
+    return [] as T;
+  }
+
+  const serverClient = createClient({
+    projectId: sanityProjectId,
+    dataset: sanityDataset,
+    apiVersion: sanityApiVersion,
+    useCdn: false,
+  });
+
+  return serverClient.fetch<T>(query, params);
+}

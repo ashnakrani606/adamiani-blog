@@ -51,7 +51,7 @@ const postProjection = `
 `;
 
 /** All published posts, newest first. */
-export const allPostsQuery = `*[_type == "blogPost" && defined(slug.current) && defined(publishDate)] | order(publishDate desc) {
+export const allPostsQuery = `*[_type == "blogPost" && defined(slug.current) && defined(publishDate) && !(_id in path("drafts.**"))] | order(publishDate desc) {
   ${listProjection}
 }`;
 
@@ -66,7 +66,7 @@ export const allCategoriesQuery = `*[_type == "category" && defined(slug.current
 }`;
 
 /** Slugs for static generation / sitemap. */
-export const allPostSlugsQuery = `*[_type == "blogPost" && defined(slug.current) && defined(publishDate)] {
+export const allPostSlugsQuery = `*[_type == "blogPost" && defined(slug.current) && defined(publishDate) && !(_id in path("drafts.**"))] {
   "slug": slug.current,
   publishDate,
   _updatedAt
@@ -74,7 +74,10 @@ export const allPostSlugsQuery = `*[_type == "blogPost" && defined(slug.current)
 
 export async function getAllPosts(): Promise<BlogPostListItem[]> {
   if (!isSanityConfigured) return [];
-  return sanityFetch<BlogPostListItem[]>(allPostsQuery);
+  // Use server-side fetch to avoid CDN staleness for critical content.
+  return (await import("./client")).serverSanityFetch<BlogPostListItem[]>(
+    allPostsQuery
+  );
 }
 
 export async function getPostBySlug(slug: string): Promise<BlogPost | null> {
@@ -91,5 +94,6 @@ export async function getAllPostSlugs(): Promise<
   { slug: string; publishDate: string; _updatedAt: string }[]
 > {
   if (!isSanityConfigured) return [];
-  return sanityFetch(allPostSlugsQuery);
+  // Use server-side fetch to ensure we don't pick up stale or cached published docs.
+  return (await import("./client")).serverSanityFetch(allPostSlugsQuery);
 }
