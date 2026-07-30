@@ -3,7 +3,10 @@ import { getAllPostSlugs, SITE_URL } from "@/lib/sanity";
 
 const baseUrl = SITE_URL;
 
-export const revalidate = 60;
+// In production this metadata route was served from the static route output
+// despite its ISR setting. A sitemap is low traffic, and must reflect an
+// unpublish immediately, so always regenerate it from Sanity's non-CDN API.
+export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticPages: MetadataRoute.Sitemap = [

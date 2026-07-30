@@ -34,3 +34,16 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Sanity cache revalidation
+
+Set `SANITY_REVALIDATE_SECRET` to the same long, random value in Vercel and in
+Sanity. In Sanity's project webhook settings, create a `POST` webhook for
+`blogPost` create, update, delete, publish, and unpublish events:
+
+- URL: `https://www.adamiani.ai/api/sanity/revalidate?secret=YOUR_SECRET`
+- Payload: default document payload (including `slug` when it is available)
+
+The endpoint invalidates the blog data tag, `/blog`, all blog-post pages, and
+`/sitemap.xml`. The next request reads Sanity's non-CDN API, so an unpublished
+post disappears without waiting for the normal 60-second ISR period.

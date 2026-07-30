@@ -3,19 +3,25 @@ import {
   sanityApiVersion,
   sanityDataset,
   sanityProjectId,
-  sanityUseCdn,
 } from "./env";
 
 export const isSanityConfigured = Boolean(sanityProjectId);
 
-const shouldUseCdn = process.env.NODE_ENV === "production" ? sanityUseCdn : false;
+/** Cache tag shared by all blog queries. */
+export const SANITY_BLOG_TAG = "sanity:blog";
+
+const blogFetchOptions = {
+  next: { revalidate: 60, tags: [SANITY_BLOG_TAG] },
+};
 
 export const sanityClient = isSanityConfigured
   ? createClient({
       projectId: sanityProjectId,
       dataset: sanityDataset,
       apiVersion: sanityApiVersion,
-      useCdn: shouldUseCdn,
+      // Do not serve just-unpublished documents from Sanity's CDN. Next.js
+      // supplies the shared 60-second cache above instead.
+      useCdn: false,
     })
   : null;
 
@@ -30,7 +36,7 @@ export async function sanityFetch<T>(
     return [] as T;
   }
 
-  return sanityClient.fetch<T>(query, params);
+  return sanityClient.fetch<T>(query, params, blogFetchOptions);
 }
 
 /**
@@ -55,5 +61,5 @@ export async function serverSanityFetch<T>(
     useCdn: false,
   });
 
-  return serverClient.fetch<T>(query, params);
+  return serverClient.fetch<T>(query, params, blogFetchOptions);
 }
