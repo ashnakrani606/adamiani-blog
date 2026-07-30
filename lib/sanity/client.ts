@@ -8,12 +8,14 @@ import {
 
 export const isSanityConfigured = Boolean(sanityProjectId);
 
+const shouldUseCdn = process.env.NODE_ENV === "production" ? sanityUseCdn : false;
+
 export const sanityClient = isSanityConfigured
   ? createClient({
       projectId: sanityProjectId,
       dataset: sanityDataset,
       apiVersion: sanityApiVersion,
-      useCdn: sanityUseCdn,
+      useCdn: shouldUseCdn,
     })
   : null;
 

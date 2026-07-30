@@ -56,12 +56,12 @@ export const allPostsQuery = `*[_type == "blogPost" && defined(slug.current) && 
 }`;
 
 /** Single post by slug. */
-export const postBySlugQuery = `*[_type == "blogPost" && slug.current == $slug][0] {
+export const postBySlugQuery = `*[_type == "blogPost" && defined(slug.current) && defined(publishDate) && !(_id in path("drafts.**")) && slug.current == $slug][0] {
   ${postProjection}
 }`;
 
 /** All categories. */
-export const allCategoriesQuery = `*[_type == "category" && defined(slug.current)] | order(name.en asc) {
+export const allCategoriesQuery = `*[_type == "category" && defined(slug.current) && !(_id in path("drafts.**"))] | order(name.en asc) {
   ${categoryProjection}
 }`;
 
