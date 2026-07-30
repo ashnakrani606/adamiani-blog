@@ -23,10 +23,10 @@ export async function POST(request: Request) {
     const revalidationTasks = [
       revalidatePath("/sitemap.xml"),
       revalidatePath("/blog"),
-      revalidateTag("sanity:blog"),
+      revalidateTag("sanity:blog", "max"),
     ];
 
-    const slug =
+    const slug =    
       body?.slug ||
       body?.document?.slug?.current ||
       body?.result?.slug?.current;
