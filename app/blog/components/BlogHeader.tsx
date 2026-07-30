@@ -40,7 +40,7 @@ export function BlogHeader({ language, setLanguage }: BlogHeaderProps) {
           <Link href="/#trust" className="transition hover:text-accent-blue">
             {t.nav[3]}
           </Link>
-          <Link href="/blog" className="text-ink transition hover:text-accent-blue">
+          <Link href={`/blog?lang=${language}`} className="text-ink transition hover:text-accent-blue">
             {t.blogNav}
           </Link>
         </div>

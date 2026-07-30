@@ -1,20 +1,22 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { content } from "@/app/lang";
+import { content, type Lang } from "@/app/lang";
 import type { BlogPostListItem, Category } from "@/lib/sanity";
 import { useBlogLanguage } from "../hooks/useBlogLanguage";
 import { BlogHeader } from "./BlogHeader";
 import { BlogCard } from "./BlogCard";
 import { CategoryFilter } from "./CategoryFilter";
+import { BlogSeoMetadata } from "./BlogSeoMetadata";
 
 type BlogIndexClientProps = {
   posts: BlogPostListItem[];
   categories: Category[];
+  initialLanguage?: Lang;
 };
 
-export function BlogIndexClient({ posts, categories }: BlogIndexClientProps) {
-  const { language, setLanguage } = useBlogLanguage();
+export function BlogIndexClient({ posts, categories, initialLanguage }: BlogIndexClientProps) {
+  const { language, setLanguage } = useBlogLanguage(initialLanguage);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const t = content[language];
 
@@ -25,6 +27,11 @@ export function BlogIndexClient({ posts, categories }: BlogIndexClientProps) {
 
   return (
     <div className="relative min-h-screen scroll-smooth bg-cream text-ink">
+      <BlogSeoMetadata
+        language={language}
+        title={`${t.blog.title} | Adamiani`}
+        description={t.blog.subtitle}
+      />
       <BlogHeader language={language} setLanguage={setLanguage} />
 
       <main className="mx-auto w-full max-w-360 px-4 pb-20 pt-12 sm:px-8 sm:pt-16">

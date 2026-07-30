@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { content } from "@/app/lang";
+import { content, type Lang } from "@/app/lang";
 import {
   formatPublishDate,
   pickLocalized,
@@ -14,13 +14,15 @@ import {
 import { useBlogLanguage } from "../hooks/useBlogLanguage";
 import { BlogHeader } from "./BlogHeader";
 import { BlogPortableText } from "./BlogPortableText";
+import { BlogSeoMetadata } from "./BlogSeoMetadata";
 
 type BlogPostClientProps = {
   post: BlogPost;
+  initialLanguage?: Lang;
 };
 
-export function BlogPostClient({ post }: BlogPostClientProps) {
-  const { language, setLanguage } = useBlogLanguage();
+export function BlogPostClient({ post, initialLanguage }: BlogPostClientProps) {
+  const { language, setLanguage } = useBlogLanguage(initialLanguage);
   const t = content[language];
 
   const title = pickLocalized(post.title, language);
@@ -35,11 +37,12 @@ export function BlogPostClient({ post }: BlogPostClientProps) {
 
   return (
     <div className="relative min-h-screen scroll-smooth bg-cream text-ink">
+      <BlogSeoMetadata language={language} post={post} />
       <BlogHeader language={language} setLanguage={setLanguage} />
 
       <main className="mx-auto w-full max-w-360 px-4 pb-20 pt-10 sm:px-8 sm:pt-14">
         <Link
-          href="/blog"
+          href={`/blog?lang=${language}`}
           className="inline-flex items-center gap-2 text-sm text-dark-grayish-blue transition hover:text-accent-blue"
         >
           <ArrowLeft className="h-4 w-4" />

@@ -1,0 +1,243 @@
+//@version=6
+// XAUUSD strategy conversion of "Stoch RSI Whittaker Signals [LuxAlgo]".
+// Apply it to an intraday XAUUSD chart. "Point size" is the XAUUSD price move
+// represented by one point; keep 1.0 when 1 point means a $1.00 gold move.
+strategy("Stoch RSI Whittaker XAUUSD Strategy", "LuxAlgo - Stoch RSI Whittaker Strategy", overlay = true, max_labels_count = 500, pyramiding = 0, calc_on_every_tick = true, process_orders_on_close = true)
+
+//---------------------------------------------------------------------------------------------------------------------}
+// Constants & inputs
+//---------------------------------------------------------------------------------------------------------------------{
+int   LENGTH_MIN = 5
+float LAMBDA_MIN = 0.1
+int   ITERS_MAX  = 50
+
+string SETTINGS_GRP = "Whittaker Settings"
+lengthInput         = input.int(500, "Length", minval = LENGTH_MIN, group = SETTINGS_GRP)
+lambdaInput         = input.float(1000, "Lambda (λ)", minval = LAMBDA_MIN, group = SETTINGS_GRP)
+pLowerInput         = input.float(0.001, "Lower Asymmetry (p)", minval = 0.0, maxval = 0.5, step = 0.001, group = SETTINGS_GRP)
+pUpperInput         = input.float(0.999, "Upper Asymmetry (p)", minval = 0.5, maxval = 1.0, step = 0.001, group = SETTINGS_GRP)
+itersInput          = input.int(10, "Iterations", minval = 1, maxval = ITERS_MAX, group = SETTINGS_GRP)
+srcInput            = input.source(close, "Source", group = SETTINGS_GRP)
+
+string STOCH_RSI_GRP = "Stoch RSI Settings"
+rsiLength           = input.int(14, "RSI Length", minval = 1, group = STOCH_RSI_GRP)
+stochLength         = input.int(14, "Stochastic Length", minval = 1, group = STOCH_RSI_GRP)
+kSmoothing          = input.int(3, "K Smoothing", minval = 1, group = STOCH_RSI_GRP)
+rsiOB               = input.int(80, "Overbought Level", minval = 50, maxval = 100, group = STOCH_RSI_GRP)
+rsiOS               = input.int(20, "Oversold Level", minval = 0, maxval = 50, group = STOCH_RSI_GRP)
+
+string STYLE_GRP = "Visual Settings"
+bullColor = input.color(#089981, "Buy Signal Color", group = STYLE_GRP)
+bearColor = input.color(#f23645, "Sell Signal Color", group = STYLE_GRP)
+showLabels = input.bool(true, "Show eligible Buy/Sell labels", group = STYLE_GRP)
+
+string RISK_GRP = "XAUUSD Risk & Target"
+pointSize       = input.float(1.0, "Point size (price movement)", minval = 0.00001, step = 0.01, group = RISK_GRP, tooltip = "For example, use 1.0 if 1 point is a $1.00 XAUUSD move.")
+stopOffsetPts   = input.float(2.0, "Stop offset (points)", minval = 0.0, step = 0.1, group = RISK_GRP)
+targetLessPts   = input.float(2.0, "Target = stop distance minus (points)", minval = 0.0, step = 0.1, group = RISK_GRP)
+maxStopPts      = input.float(50.0, "Maximum stop loss (points)", minval = 0.1, step = 0.1, group = RISK_GRP)
+onlyXauUsd      = input.bool(true, "Trade only symbols containing XAUUSD", group = RISK_GRP)
+
+string SESSION_GRP = "Session & Monthly Limit"
+tradeSession     = input.session("0000-2359:23456", "Trading session", group = SESSION_GRP, tooltip = "Set this to your broker's XAUUSD trading hours. The default is Monday-Friday, all day.")
+sessionTimezone  = input.string("Etc/UTC", "Session timezone", options = ["Etc/UTC", "America/New_York", "Europe/London", "Asia/Kolkata"], group = SESSION_GRP)
+forceCloseHour   = input.int(23, "Force-close hour", minval = 0, maxval = 23, group = SESSION_GRP)
+forceCloseMinute = input.int(55, "Force-close minute", minval = 0, maxval = 59, group = SESSION_GRP, tooltip = "Use a time before your broker's XAUUSD market close.")
+monthlyLimitPts  = input.float(50.0, "Monthly profit limit (points)", minval = 0.1, step = 0.1, group = SESSION_GRP, tooltip = "After closed-trade profit reaches this limit, no new trade or signal label is shown until the next calendar month.")
+
+calcBarsLimit = input.int(1000, "Signal Calculation Limit", minval = 1, group = "Performance")
+
+color BULL_COLOR = #089981
+color BEAR_COLOR = #f23645
+
+//---------------------------------------------------------------------------------------------------------------------}
+// Whittaker functions
+//---------------------------------------------------------------------------------------------------------------------{
+var float[] d_tmp   = array.new_float(lengthInput)
+var float[] c_tmp   = array.new_float(lengthInput)
+var float[] b_tmp   = array.new_float(lengthInput)
+var float[] weights = array.new_float(lengthInput)
+var float[] b_curr  = array.new_float(lengthInput)
+var float[] d_curr  = array.new_float(lengthInput)
+var float[] z_res   = array.new_float(lengthInput)
+var float[] p_win   = array.new_float(lengthInput)
+
+solvePentadiagonal(array<float> b, array<float> d, array<float> c, array<float> f, int n, array<float> x) =>
+    for i = 0 to n - 1
+        d_tmp.set(i, d.get(i))
+        c_tmp.set(i, c.get(i))
+        b_tmp.set(i, b.get(i))
+    float r = c_tmp.get(0)
+    float s = c_tmp.get(1)
+    float t = f.get(0)
+    int l1 = n - 1
+    int l2 = n - 2
+    for i = 1 to l2
+        float dPrev = d_tmp.get(i - 1)
+        float xmult = r / dPrev
+        d_tmp.set(i, d_tmp.get(i) - xmult * c_tmp.get(i - 1))
+        c_tmp.set(i, c_tmp.get(i) - xmult * f.get(i - 1))
+        b_tmp.set(i, b_tmp.get(i) - xmult * b_tmp.get(i - 1))
+        xmult := t / dPrev
+        r := s - xmult * c_tmp.get(i - 1)
+        d_tmp.set(i + 1, d_tmp.get(i + 1) - xmult * f.get(i - 1))
+        b_tmp.set(i + 1, b_tmp.get(i + 1) - xmult * b_tmp.get(i - 1))
+        if i < l2
+            s := c_tmp.get(i + 1)
+            t := f.get(i)
+    float finalMult = r / d_tmp.get(l2)
+    d_tmp.set(l1, d_tmp.get(l1) - finalMult * c_tmp.get(l2))
+    x.set(l1, (b_tmp.get(l1) - finalMult * b_tmp.get(l2)) / d_tmp.get(l1))
+    x.set(l2, (b_tmp.get(l2) - c_tmp.get(l2) * x.get(l1)) / d_tmp.get(l2))
+    for i = n - 3 to 0 by 1
+        x.set(i, (b_tmp.get(i) - f.get(i) * x.get(i + 2) - c_tmp.get(i) * x.get(i + 1)) / d_tmp.get(i))
+
+whittakerALS(array<float> prices, array<float> dBase, array<float> cBase, array<float> fBase, int n, int iters, float p, array<float> z) =>
+    weights.fill(1.0)
+    for it = 1 to iters
+        for i = 0 to n - 1
+            float w = weights.get(i)
+            d_curr.set(i, dBase.get(i) + w)
+            b_curr.set(i, w * prices.get(i))
+        solvePentadiagonal(b_curr, d_curr, cBase, fBase, n, z)
+        for i = 0 to n - 1
+            weights.set(i, prices.get(i) > z.get(i) ? p : 1.0 - p)
+
+//---------------------------------------------------------------------------------------------------------------------}
+// Session, monthly points and exit at market close
+//---------------------------------------------------------------------------------------------------------------------{
+bool inSession = not na(time(timeframe.period, tradeSession, sessionTimezone))
+int forceCloseTimestamp = timestamp(sessionTimezone, year(time, sessionTimezone), month(time, sessionTimezone), dayofmonth(time, sessionTimezone), forceCloseHour, forceCloseMinute)
+bool marketCloseTime = inSession and time_close >= forceCloseTimestamp
+
+var float monthlyPoints = 0.0
+var int processedClosedTrades = 0
+bool newMonth = not na(time[1]) and (month(time, sessionTimezone) != month(time[1], sessionTimezone) or year(time, sessionTimezone) != year(time[1], sessionTimezone))
+if newMonth
+    monthlyPoints := 0.0
+
+if strategy.closedtrades > processedClosedTrades
+    for tradeNumber = processedClosedTrades to strategy.closedtrades - 1
+        float direction = strategy.closedtrades.size(tradeNumber) > 0 ? 1.0 : -1.0
+        float closedPoints = (strategy.closedtrades.exit_price(tradeNumber) - strategy.closedtrades.entry_price(tradeNumber)) * direction / pointSize
+        monthlyPoints += closedPoints
+    processedClosedTrades := strategy.closedtrades
+
+bool monthlyTargetReached = monthlyPoints >= monthlyLimitPts
+bool isXauUsd = str.contains(syminfo.ticker, "XAUUSD")
+bool symbolAllowed = not onlyXauUsd or isXauUsd
+
+// A position is closed before the configured daily market close. This is deliberately
+// done before signal processing, so no new order can be opened at the close.
+if strategy.position_size != 0 and (not inSession or marketCloseTime)
+    strategy.close_all(comment = "Market close")
+
+//---------------------------------------------------------------------------------------------------------------------}
+// Signal and orders
+//---------------------------------------------------------------------------------------------------------------------{
+var dBase = array.new_float(lengthInput)
+var cBase = array.new_float(lengthInput)
+var fBase = array.new_float(lengthInput)
+
+if barstate.isfirst
+    float k = lambdaInput
+    for i = 0 to lengthInput - 1
+        float di = 6.0 * k
+        float ci = -4.0 * k
+        float fi = k
+        if i == 0
+            di := k
+            ci := -2.0 * k
+        else if i == 1
+            di := 5.0 * k
+        else if i == lengthInput - 2
+            di := 5.0 * k
+            ci := -2.0 * k
+        else if i == lengthInput - 1
+            di := k
+            ci := 0.0
+            fi := 0.0
+        dBase.set(i, di)
+        cBase.set(i, ci)
+        fBase.set(i, fi)
+
+rsiValue = ta.rsi(srcInput, rsiLength)
+stochRsiValue = ta.sma(ta.stoch(rsiValue, rsiValue, rsiValue, stochLength), kSmoothing)
+
+var int lastSignalBar = -1
+bool canCalcSignal = (last_bar_index - bar_index) <= calcBarsLimit and bar_index >= lengthInput + 2
+
+if canCalcSignal
+    for i = 0 to lengthInput - 1
+        p_win.set(i, srcInput[i])
+    whittakerALS(p_win, dBase, cBase, fBase, lengthInput, itersInput, pUpperInput, z_res)
+    float preUpper2 = z_res.get(2)
+    whittakerALS(p_win, dBase, cBase, fBase, lengthInput, itersInput, pLowerInput, z_res)
+    float preLower2 = z_res.get(2)
+
+    bool wasRed = close[1] < open[1]
+    bool wasGreen = close[1] > open[1]
+    bool lowBreak = low < low[1]
+    bool highBreak = high > high[1]
+    bool rawSell = srcInput[2] >= preUpper2 and stochRsiValue[2] >= rsiOB and wasRed and lowBreak
+    bool rawBuy = srcInput[2] <= preLower2 and stochRsiValue[2] <= rsiOS and wasGreen and highBreak
+
+    // Signal-candle rule: long stop = prior candle low - 2 points;
+    // short stop = prior candle high + 2 points. Target distance = risk - 2 points.
+    float longStop = low[1] - stopOffsetPts * pointSize
+    float shortStop = high[1] + stopOffsetPts * pointSize
+    float longRiskPts = (close - longStop) / pointSize
+    float shortRiskPts = (shortStop - close) / pointSize
+    bool commonTradeFilter = bar_index > lastSignalBar and strategy.position_size == 0 and inSession and not marketCloseTime and symbolAllowed and not monthlyTargetReached
+    bool buyTrade = rawBuy and commonTradeFilter and longRiskPts > targetLessPts and longRiskPts <= maxStopPts
+    bool sellTrade = rawSell and commonTradeFilter and shortRiskPts > targetLessPts and shortRiskPts <= maxStopPts
+
+    if buyTrade
+        float longTarget = close + (longRiskPts - targetLessPts) * pointSize
+        if showLabels
+            label.new(bar_index, low, "SR BUY", color = #00000000, textcolor = bullColor, style = label.style_label_up, size = size.small)
+        strategy.entry("Long", strategy.long, comment = "SR BUY")
+        strategy.exit("Long TP/SL", "Long", stop = longStop, limit = longTarget)
+        lastSignalBar := bar_index
+    else if sellTrade
+        float shortTarget = close - (shortRiskPts - targetLessPts) * pointSize
+        if showLabels
+            label.new(bar_index, high, "SR SELL", color = #00000000, textcolor = bearColor, style = label.style_label_down, size = size.small)
+        strategy.entry("Short", strategy.short, comment = "SR SELL")
+        strategy.exit("Short TP/SL", "Short", stop = shortStop, limit = shortTarget)
+        lastSignalBar := bar_index
+
+plot(monthlyPoints, "Monthly closed P/L (points)", display = display.data_window)
+plot(monthlyLimitPts, "Monthly profit limit (points)", display = display.data_window)
+
+//---------------------------------------------------------------------------------------------------------------------}
+// Whittaker visual lines
+//---------------------------------------------------------------------------------------------------------------------{
+var polyline lowerLine = na
+var polyline upperLine = na
+var polyline avgLine = na
+
+if barstate.islast and bar_index >= lengthInput
+    var prices = array.new_float(lengthInput)
+    var zLower = array.new_float(lengthInput)
+    var zUpper = array.new_float(lengthInput)
+    for i = 0 to lengthInput - 1
+        prices.set(i, srcInput[i])
+    whittakerALS(prices, dBase, cBase, fBase, lengthInput, itersInput, pLowerInput, zLower)
+    whittakerALS(prices, dBase, cBase, fBase, lengthInput, itersInput, pUpperInput, zUpper)
+    polyline.delete(lowerLine)
+    polyline.delete(upperLine)
+    polyline.delete(avgLine)
+    array<chart.point> lowerPoints = array.new<chart.point>()
+    array<chart.point> upperPoints = array.new<chart.point>()
+    array<chart.point> avgPoints = array.new<chart.point>()
+    for i = lengthInput - 1 to 0
+        int idx = bar_index - i
+        float zl = zLower.get(i)
+        float zu = zUpper.get(i)
+        lowerPoints.push(chart.point.from_index(idx, zl))
+        upperPoints.push(chart.point.from_index(idx, zu))
+        avgPoints.push(chart.point.from_index(idx, (zl + zu) / 2.0))
+    lowerLine := polyline.new(lowerPoints, line_color = BULL_COLOR, line_width = 2)
+    upperLine := polyline.new(upperPoints, line_color = BEAR_COLOR, line_width = 2)
+    avgLine := polyline.new(avgPoints, line_color = chart.fg_color, line_width = 1, line_style = line.style_dashed)

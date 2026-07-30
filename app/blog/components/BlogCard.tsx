@@ -28,7 +28,7 @@ export function BlogCard({ post, language }: BlogCardProps) {
 
   return (
     <article className="group">
-      <Link href={`/blog/${post.slug}`} className="block">
+      <Link href={`/blog/${post.slug}?lang=${language}`} className="block">
         <div className="relative aspect-[16/9] overflow-hidden bg-mist rounded-sm">
           {imageUrl ? (
             <Image

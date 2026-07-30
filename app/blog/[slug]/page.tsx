@@ -1,18 +1,17 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
-  blogPostUrl,
   getAllPostSlugs,
   getPostBySlug,
-  pickLocalized,
-  urlForImage,
 } from "@/lib/sanity";
 import { BlogPostClient } from "../components/BlogPostClient";
+import { getBlogLanguage, getBlogPostSeo } from "../seo";
 
 export const revalidate = 60;
 
 type PageProps = {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ lang?: string }>;
 };
 
 export async function generateStaticParams() {
@@ -20,8 +19,10 @@ export async function generateStaticParams() {
   return posts.map((post) => ({ slug: post.slug }));
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { slug } = await params;
+  const { lang } = await searchParams;
+  const language = getBlogLanguage(lang);
   const post = await getPostBySlug(slug);
 
   if (!post) {
@@ -30,40 +31,32 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     };
   }
 
-  const title =
-    pickLocalized(post.seoTitle, "en") ||
-    pickLocalized(post.title, "en") ||
-    "Adamiani Blog";
-  const description =
-    pickLocalized(post.seoDescription, "en") ||
-    pickLocalized(post.excerpt, "en") ||
-    "";
-  const url = blogPostUrl(post.slug);
-  const ogImage = post.featuredImage?.asset
-    ? urlForImage(post.featuredImage).width(1200).height(630).url()
-    : undefined;
+  const seo = getBlogPostSeo(post, language);
 
   return {
-    title,
-    description,
+    title: seo.title,
+    description: seo.description,
     alternates: {
-      canonical: url,
+      canonical: seo.url,
+      languages: seo.languages,
     },
     openGraph: {
-      title,
-      description,
-      url,
+      title: seo.title,
+      description: seo.description,
+      url: seo.url,
       siteName: "Adamiani",
       type: "article",
       publishedTime: post.publishDate,
-      ...(ogImage
+      locale: seo.locale,
+      alternateLocale: seo.alternateLocales,
+      ...(seo.image
         ? {
             images: [
               {
-                url: ogImage,
+                url: seo.image,
                 width: 1200,
                 height: 630,
-                alt: title,
+                alt: seo.imageAlt,
               },
             ],
           }
@@ -71,14 +64,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     },
     twitter: {
       card: "summary_large_image",
-      title,
-      description,
-      ...(ogImage ? { images: [ogImage] } : {}),
+      title: seo.title,
+      description: seo.description,
+      ...(seo.image ? { images: [seo.image] } : {}),
     },
   };
 }
 
-export default async function BlogPostPage({ params }: PageProps) {
+export default async function BlogPostPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const post = await getPostBySlug(slug);
 
@@ -86,5 +79,6 @@ export default async function BlogPostPage({ params }: PageProps) {
     notFound();
   }
 
-  return <BlogPostClient post={post} />;
+  const { lang } = await searchParams;
+  return <BlogPostClient post={post} initialLanguage={getBlogLanguage(lang)} />;
 }
